@@ -1,0 +1,90 @@
+/* Programming Name = SDTM.DM */
+/* DATE = 2023-08-29 */
+
+******************************************************************************;
+
+LIBNAME KAPILRAW "/home/u61674114/Kapil raw";
+
+PROC SORT DATA=KAPILRAW.DM1001 NODUP OUT = SORTDATA;
+BY RECORD_ID;
+RUN;
+
+DATA DM1  (KEEP = STUDYID DOMAIN USUBJID SUBJID DTHDTC DTHFL SITEID BRTHDTC AGE AGEU
+SEX RACE  ETHNIC ARMCD ARM ACTARMCD ACTARM ARMNRS ACTARMUD COUNTRY PDMEDAMT );
+SET SORTDATA;
+STUDYID = "HBPD03";
+DOMAIN = "DM";
+USUBJID = RECORD_ID;
+SUBJID = Scan(RECORD_ID,3,"-");
+DTHDTC = " ";
+DTHFL = " ";
+SITEID = Scan(RECORD_ID,2,"-");
+BRTHDTC = substr(PUT(D_DOB,DATE9.),6,4);
+format  BRTHDTC DATE9.; 
+AGE = D_AGE;
+If not missing (age) then AGEU = "YEARS";
+If D_GENDER = 'Female' then SEX = 'F';
+else if D_GENDER = 'Male' then SEX =  'M';
+RACE =upcase(D_RACE);
+ETHNIC=upcase(D_ETHNICITY);
+ARMCD = " ";
+ARM =" ";
+ACTARMCD = " ";
+ACTARM = " ";
+ARMNRS = " ";
+ACTARMUD = " ";
+COUNTRY = 'USA';
+If D_LEVODOPA = 0 then PDMEDAMT = 'UNKNOWN';
+Else PDMEDAMT = D_LEVODOPA;
+if REDCAP_EVENT_NAME = "Screening";
+RUN;
+
+***********************DERIVAION OF RFSTDTC RFXSTDTC RFENDTC RFXENTDTC*******************************;
+
+proc sort data=kapilraw.ip1001 out = dm_d1;
+by RECORD_ID IP_DATE;
+RUN;
+
+DATA DM_D2 (KEEP= USUBJID RFSTDTC RFXSTDTC );
+SET DM_D1;
+IF REDCAP_EVENT_NAME = "Infusion 1" then RFSTDTC = INPUT(IP_DATE,YMDDTTM16.);
+ELSE DELETE;
+FORMAT RFSTDTC RFXSTDTC e8601dt.;
+RENAME RECORD_ID = USUBJID;
+RFXSTDTC = RFSTDTC;
+RUN;
+
+*******************AS OF NOW RFPENDTC CONSIDERED AS RFENDTC********************************************:
+
+DATA DM_D3 (KEEP= USUBJID RFENDTC RFXENTDTC RFPENDTC);
+SET DM_D1;
+IF REDCAP_EVENT_NAME = "Infusion 6" then RFENDTC = INPUT(IP_DATE,YMDDTTM16.);
+ELSE DELETE;
+FORMAT RFENDTC RFXENTDTC RFPENDTC e8601dt.;
+RENAME RECORD_ID = USUBJID;
+RFXENTDTC = RFENDTC; 
+RFPENDTC = RFENDTC;
+RUN;
+
+*****************************MERGED WITH OTHER VARIABLE***************************************************;
+data DM2;
+MERGE DM1 DM_D2 DM_D3;
+BY USUBJID;
+RUN;
+
+**********************************INFORMED CONSENT********************************************************;
+
+DATA DM_IC(KEEP = USUBJID RFICDTC) ;
+SET IC1;
+IF REDCAP_EVENT_NAME = "General" THEN RFICDTC = INPUT(IC_DATE,YMDDTTM16.);
+ELSE DELETE;
+FORMAT RFICDTC e8601dt.;
+RENAME RECORD_ID = USUBJID;
+RUN;
+
+**************************MERING OF ALL DATA***************************************************************;
+
+data DM2;
+MERGE DM1 DM_D2 DM_D3 DM_IC;
+BY USUBJID;
+RUN;
