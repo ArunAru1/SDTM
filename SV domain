@@ -1,0 +1,195 @@
+libname raw1 "path";
+
+data sv1;
+length  date $ 30;
+# set raw1.aer1001 (keep= record_id redcap_event_name aer_date rename=(aer_date=date))
+#     raw1.dm1001 (keep= record_id redcap_event_name d_date rename=(d_date=date))
+#     raw1.h1001 (keep= record_id redcap_event_name h_date rename=(h_date=date))
+#     raw1.ip1001 (keep= record_id redcap_event_name ip_date rename=(ip_date=date)) 
+#     raw1.ie1001 (keep= record_id redcap_event_name ie_date rename=(ie_date=date))
+#     raw1.le1001 (keep= record_id redcap_event_name le_date rename=(le_date=date))
+#     raw1.le1001 (keep= record_id redcap_event_name le_date rename=(le_date=date))
+#     raw1.n2f1001 (keep= record_id redcap_event_name n2f_datetime rename=(n2f_datetime=date))
+#     raw1.nqol1001 (keep= record_id redcap_event_name nqol_date rename=(nqol_date=date))
+#     raw1.pd1001 (keep= record_id redcap_event_name pd_date rename=(pd_date=date))
+#     raw1.pdq1001 (keep= record_id redcap_event_name pdq_date rename=(pdq_date=date))
+#     raw1.pfs1001 (keep= record_id redcap_event_name pfs_date rename=(pfs_date=date))
+#     raw1.pn1001 (keep= record_id redcap_event_name pn_date rename=(pn_date=date))
+#     raw1.te1001 (keep= record_id redcap_event_name te_date rename=(te_date=date))
+#     raw1.vas1001 (keep= record_id redcap_event_name vas_date rename=(vas_date=date))
+#     raw1.vc1001 (keep= record_id redcap_event_name vc_date rename=(vc_date=date))
+#     raw1.vd1001 (keep= record_id redcap_event_name vd_date rename=(vd_date=date))
+#     raw1.vs1001 (keep= record_id redcap_event_name vs_date rename=(vs_date=date))
+#     raw1.w1001 (keep= record_id redcap_event_name w_date rename=(w_date=date));
+# run;
+
+proc sort data=sv1(where=(redcap_event_name ^= "G*n*r*l")) out=sv2;
+by record_id redcap_event_name;
+where date ^='';
+run;
+
+
+data unsch0 sch0;
+set sv2;
+if find(redcap_event_name,'unsc','I')>0 then output unsch0;
+else output sch0;
+run;
+
+
+data sv3; 
+  set sch0; 
+  length VISIT $ 21;
+  length visit $12;
+ visit = put(redcap_event_name, $SV_VIS.);         *seems to be proc format is used but made as commands;
+  visitnum = input(visit, SV_VISNUM.); 
+run;
+
+proc sort data=sv3 out=sch1;
+by record_id redcap_event_name date;
+run;
+
+data sch2;
+set sch1;
+by record_id redcap_event_name date;
+retain start;
+if first.redcap_event_name then start=date;
+if last.redcap_event_name then do; end=date; output; end;
+run;
+
+proc sort data=sch2 out=sch3 ;
+by record_id start;
+run;
+
+proc sort data=unsch0 nodup out=unsch1;
+by record_id;
+run;
+
+proc sql; 
+  create table unscheduled1 as 
+    select t1.*, t2.date as date_
+      from sch3 t1 inner join unsch1 t2                 
+        on t1.record_id = t2.record_id
+      where t2.date is not missing
+      having date <= date_
+      order by date, visitnum;                        * unschedule date_; 
+quit;
+
+data unscheduled2;
+  set unscheduled1;
+  by record_id date_ date;                          *unschedule date_;
+  if last.date_;
+run;
+
+
+data unscheduled3;
+length visit $ 21.;
+set unscheduled2;
+by record_id;
+if first.record_id then cnt=1;
+else cnt+1;
+visitnum=visitnum+cnt/10;
+visit=catx(" ","unschedule",visitnum);
+start = date_;
+end = date_;
+run;
+
+data Final1;
+  length usubjid $ 20. studyid$ 20.;
+  set sch3 unscheduled3;
+  studyid = "****";
+  usubjid = record_id;
+  domain  = 'SV';
+  svstdtc = substr(start,1,10);
+  svendtc = substr(end,1,10);
+ keep  STUDYID DOMAIN USUBJID  VISITNUM VISIT  SVSTDTC SVENDTC;
+run;
+
+proc sort data=Final1 out=final2;
+by usubjid visitnum svstdtc;
+run;
+
+
+proc sort data = raw1.ip1001 (where=(^missing(ip_date))) out=ip0;
+  by record_id ip_date ;
+run;
+/*  */
+
+data ip1;
+  set ip0;
+  by record_id;
+  if first.record_id;
+  rfstdt = input(substr(ip_date, 1, 10), E8601DA10.);
+/*   format rfstdt DATE9.; */
+  keep record_id  rfstdt redcap_event_name;
+run;
+
+data svdt1;
+  set final1  ;
+  st_dt = input(substr(svstdtc, 1, 10), E8601DA10.);
+  en_dt = input(substr(svendtc, 1, 10), E8601DA10.);
+/*   format st_dt en_dt DATE9.; */
+run;
+/*    */
+proc sql;
+  create table svdt2 as 
+    select t1.usubjid,t1.visit as redcap_event_name,t1.visitnum,t1.st_dt,t1.en_dt,t2.rfstdt 
+      from svdt1 t1  left join ip1 t2
+        on t1.usubjid=t2.record_id;
+quit;
+/*  */
+
+data Final3;
+  length SVUPDES $ 100.;
+  set svdt2;
+  
+  if st_dt >= rfstdt then
+    svstdy   = st_dt - rfstdt +1;
+  else if st_dt < rfstdt then
+    svstdy   = st_dt - rfstdt ;
+  else svstdy= .;
+  
+ 
+  if en_dt >= rfstdt then
+    svendy   = en_dt - rfstdt +1;
+  else if en_dt < rfstdt then
+    svendy   = en_dt - rfstdt ;
+  else svendy= .;    
+    
+  if int(visitnum) = visitnum then 
+    visitdy  = visitnum;
+    format  visitdy SV_VISDY.;
+  else 
+    SVUPDES = "Unscheduled";
+run;
+
+proc sort data=Final3 out=final4;
+by usubjid visitnum ;
+run;
+
+data Final5;
+merge final2 final4;
+by usubjid visitnum;
+run;
+
+proc sql;
+create table final6 as 
+select STUDYID, DOMAIN, USUBJID, /*SUBJID*/ VISITNUM, VISIT, VISITDY, SVSTDTC, SVENDTC, SVSTDY, SVENDY, SVUPDES
+from final5;
+quit;
+
+data _Final_;
+  set final6;
+  attrib
+    STUDYID  length = $20  label = 'Study Identifier'
+    DOMAIN   length = $2   label = 'Domain Abbreviation'
+    USUBJID  length = $20  label = 'Unique Subject Identifier'
+/*     SUBJID   length=  $6   label='Subject Identifier for the Study'   */
+    VISITNUM length = 8    label = 'Visit Number'
+    VISIT    length = $40  label = 'Visit Name'
+    VISITDY  length = 8    label = 'Planned Study Day of Visit'
+    SVSTDTC  length = $20  label = 'Start Date/Time of Visit'
+    SVENDTC  length = $20  label = 'End Date/Time of Visit'
+    SVSTDY   length = 8    label = 'Study Day of Start of Visit'
+    SVENDY   length = 8    label = 'Study Day of End of Visit'
+    SVUPDES  length = $100 label = 'Description of Unplanned Visit';
+  run;  
