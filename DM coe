@@ -3,16 +3,16 @@
 
 ******************************************************************************;
 
-LIBNAME KAPILRAW "/home/u61674114/Kapil raw";
+LIBNAME raw1 "/home/u61674114/rawdata";
 
-PROC SORT DATA=KAPILRAW.DM1001 NODUP OUT = SORTDATA;
+PROC SORT DATA=raw1.DM1001 NODUP OUT = SORTDATA;
 BY RECORD_ID;
 RUN;
 
 DATA DM1  (KEEP = STUDYID DOMAIN USUBJID SUBJID DTHDTC DTHFL SITEID BRTHDTC AGE AGEU
 SEX RACE  ETHNIC ARMCD ARM ACTARMCD ACTARM ARMNRS ACTARMUD COUNTRY PDMEDAMT );
 SET SORTDATA;
-STUDYID = "HBPD03";
+STUDYID = "****03";
 DOMAIN = "DM";
 USUBJID = RECORD_ID;
 SUBJID = Scan(RECORD_ID,3,"-");
@@ -41,7 +41,7 @@ RUN;
 
 ***********************DERIVAION OF RFSTDTC RFXSTDTC RFENDTC RFXENTDTC*******************************;
 
-proc sort data=kapilraw.ip1001 out = dm_d1;
+proc sort data=raw1.ip1001 out = dm_d1;
 by RECORD_ID IP_DATE;
 RUN;
 
