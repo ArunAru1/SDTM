@@ -40,7 +40,7 @@ data sv3;
   set sch0; 
   length VISIT $ 21;
   length visit $12;
- visit = put(redcap_event_name, $SV_VIS.);         *seems to be proc format is used but made as commands;
+ visit = put(redcap_event_name, $SV_VIS.);         
   visitnum = input(visit, SV_VISNUM.); 
 run;
 
@@ -71,12 +71,12 @@ proc sql;
         on t1.record_id = t2.record_id
       where t2.date is not missing
       having date <= date_
-      order by date, visitnum;                        * unschedule date_; 
+      order by date, visitnum;
 quit;
 
 data unscheduled2;
   set unscheduled1;
-  by record_id date_ date;                          *unschedule date_;
+  by record_id date_ date;                          
   if last.date_;
 run;
 
@@ -173,7 +173,7 @@ run;
 
 proc sql;
 create table final6 as 
-select STUDYID, DOMAIN, USUBJID, /*SUBJID*/ VISITNUM, VISIT, VISITDY, SVSTDTC, SVENDTC, SVSTDY, SVENDY, SVUPDES
+select STUDYID, DOMAIN, USUBJID, VISITNUM, VISIT, VISITDY, SVSTDTC, SVENDTC, SVSTDY, SVENDY, SVUPDES
 from final5;
 quit;
 
@@ -183,7 +183,6 @@ data _Final_;
     STUDYID  length = $20  label = 'Study Identifier'
     DOMAIN   length = $2   label = 'Domain Abbreviation'
     USUBJID  length = $20  label = 'Unique Subject Identifier'
-/*     SUBJID   length=  $6   label='Subject Identifier for the Study'   */
     VISITNUM length = 8    label = 'Visit Number'
     VISIT    length = $40  label = 'Visit Name'
     VISITDY  length = 8    label = 'Planned Study Day of Visit'
