@@ -1,0 +1,101 @@
+libname raw1 "/home/u61674114/INPUT/Kapil_ADAM";
+
+PROC FORMAT;
+VALUE $ DOSEU
+"GRAMS"="g"
+"GTT"="gtt"
+"HP_X"="HOMEOPATHIC DILUTION"
+"IU"="IU"
+"MCG"="ug"
+"MG"="mg"
+"MG/MG"="g/g"
+"MG/ML"="g/L"
+"TAB"="TABLET"
+"TABS"="TABLET"
+"UNIT"="U"
+"UNITS"="U"
+"1"="mg"
+"2"="TABLET"
+;
+value $ cmRoute
+"IM"="INTRAMUSCULAR"
+"INJECTION"="SUBCUTANEOUS"
+"IV"="INTRAVENOUS"
+"NASAL"="NASAL"
+"OPTH"="OPHTHALMIC"
+"ORAL"="ORAL"
+"P.O."="ORAL"
+"PO"="ORAL"
+"SQ"="SUBCUTANEOUS"
+"SUBCUTANEOUS"="SUBCUTANEOUS"
+"TRANSDERMAL"="TRANSDERMAL"
+"TRANSDERMALLY"="TRANSDERMAL"
+;
+RUN;
+
+
+data cm1;
+set raw1.cm1001  (where=(CM_DRUG^="")) ;
+STUDYID = 'HBPD03';
+DOMAIN = "CM";
+USUBJID = record_id;
+CMTRT = CM_DRUG;
+CMDECOD = "";
+CMINDC = upcase(CM_INDICATION);
+if index(CM_DOSE, '/') = 0 then  CMDOSE=input(CM_DOSE,??BEST.);  
+If missing(cmdose) and ~missing(cm_dose) then CMDOSTXT=strip(cm_dose);
+CMDOSU=UPCASE(CM_UNIT);
+If CM_FREQUENCY = 0 then CMDOSFRQ = 'UNKNOWN';
+Else if CM_FREQUENCY = 1 then CMDOSFRQ = 'QD';
+Else if CM_FREQUENCY = 2 then CMDOSFRQ = 'BID';
+if index(CM_DOSE, '/') ^= 0 then CMDOSTOT = input(CM_DOSE24HRS, ??BEST.);
+CMROUTE = upcase(CM_ROUTE);
+format CMDOSU DOSEU.  CMROUTE cmRoute.;
+CMDTC=INPUT(CM_DATE,??anydtdtm20.);
+format CMDTC e8601dt.;
+cmdt=input(substr(CM_DATE,1,10),??E8601DA.);
+CMSTDTC=CM_START;
+CMENDTC=CM_END;
+If CM_ONGOING="Yes" then CMENRF="Ongoing"; else CMENRF="";
+If index(CM_DOSE24HRS, '/')>0 then CMDTTXT=CM_DOSE24HRS;
+CMCLAS="";
+CMCLASCD="";
+keep STUDYID DOMAIN USUBJID CMTRT CMDECOD CMINDC CMDOSE CMDOSTXT CMDOSU CMDOSFRQ CMDOSTOT CMROUTE CMDTC CMSTDTC CMENDTC CMENRF CMDTTXT cmdt CMCLAS CMCLASCD;
+run;
+
+data rf_dt;
+set raw1.ip1001(where=(ip_date^="") rename=(record_id=USUBJID));
+rfstd=input(substr(ip_date,1,10),??E8601DA.);
+run;
+
+proc sort data=rf_dt(keep= USUBJID rfstd) out=rf_dt1;
+by USUBJID rfstd;
+run;
+
+data rf_dt2;
+set rf_dt1;
+by USUBJID rfstd;
+if first.USUBJID;
+run;
+
+proc sql;
+create table cm2 as
+select t1.*,t2.rfstd
+from cm1 t1 left join rf_dt2 t2
+on t1.USUBJID=t2.USUBJID;
+run;
+
+data cm3;
+set cm2;
+If (cmdt < rfstd) then CMDY=cmdt-rfstd; 
+if (cmdt >= rfstd) then CMDY=(cmdt-rfstd)+1;
+If (CMSTDTC < rfstd) then CMSTDY=CMSTDTC-rfstd; 
+Else if (CMSTDTC >= rfstd) then CMSTDY=(CMSTDTC-rfstd)+1;
+If (CMENDTC < rfstd) then CMENDY=CMENDTC-rfstd; 
+Else if (CMENDTC >= rfstd) then CMENDY=(CMENDTC-rfstd)+1; 
+run;
+
+proc sql;
+select distinct cm_DATE
+from raw1.cm1001;
+quit;
