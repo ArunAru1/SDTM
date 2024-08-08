@@ -1,0 +1,125 @@
+*********************************************************************************************************************;
+
+**Programmer Name : Arunkumar
+  Domain          : AE
+  Date            : 25-05-2024;
+
+*********************************************************************************************************************;
+
+LIBNAME RAW "/home/u61674114/INPUT";
+
+*********************************************************************************************************************;
+PROC FORMAT;
+VALUE $ AESEV
+"Mild" = "MILD"
+"Moderate" = "MODERATE"
+"Severe" = "SEVERE";
+
+VALUE $ AESER
+"No" = "N"
+"Yes" = "Y" ;
+
+VALUE $ AEACN
+"Drug Withdrawn" = "DRUG WITHDRAWN"
+"Drug Interrupted" = "DRUG INTERRUPTED"
+"Dose Not Changed" = "DOSE NOT CHANGED" 
+"Not Applicable" = "NOT APPLICABLE";
+
+VALUE $ AEREL
+"Not Related"="NOT RELATED"
+"Possibly Related"="POSSIBLY RELATED"
+"Probably Related"="PROBABLY RELATED"
+"Definitely Related"="DEFINITELY RELATED" ;
+
+Value $ AEOUT
+"Fatal"="FATAL"
+"Recovered/Resolved"="RECOVERED/RESOLVED"
+"Recovering/Resolving"="RECOVERED/RESOLVED"
+"Unknown"="UNKNOWN";
+
+RUN; 
+
+*********************************************************************************************************************;
+DATA AE1;
+set RAW.AE1 (KEEP= Project SUBJECT RECORDPOSITION AETERM AETERM_LLT AETERM_LLT_CODE AETERM_PT  AETERM_PT_CODE AETERM_HLT AETERM_HLT_CODE 
+AETERM_HLGT AETERM_HLGT_CODE AETERM_SOC  AETERM_SOC_CODE AESEV AESER AEACN AEREL AEPATT AEOUT AESOT );
+STUDYID  = Project;
+DOMAIN ="AE";
+SUBJID = CATX("-",SUBSTR(SUBJECT,1,4),SUBSTR(SUBJECT,5,3));
+USUBJID = catx("-",STUDYID,SUBJID);
+AEREFID  = PUT(RECORDPOSITION,3.) ;
+AETERM1 = AETERM ;
+AELLT = AETERM_LLT;
+AELLTCD = AETERM_LLT_CODE;
+AEDECOD =AETERM_PT ;
+AEPTCD = AETERM_PT_CODE ;
+AEHLT = AETERM_HLT ;
+AEHLTCD = AETERM_HLT_CODE ;
+AEHLGT =AETERM_HLGT ;
+AEHLGTCD = AETERM_HLGT_CODE ;
+AESOC = AETERM_SOC ;
+AESOCCD = AETERM_SOC_CODE ;
+AEBODSYS = AESOC ;
+AEBDSYCD = AESOCCD;
+AESEV1 = AESEV; 
+AESER1 = AESER;
+AEACN1 = AEACN;
+AEREL1 = AEREL;
+AEPATT1 =UPCASE(AEPATT);
+AEOUT1 = AEOUT;
+FORMAT AESEV1 AESEV. AESER1 AESER. AEACN1 AEACN. AEREL1 AEREL. AEOUT1 AEOUT.;
+drop Project SUBJECT RECORDPOSITION AETERM AETERM_LLT AETERM_LLT_CODE AETERM_PT  AETERM_PT_CODE AETERM_HLT AETERM_HLT_CODE 
+AETERM_HLGT AETERM_HLGT_CODE AETERM_SOC  AETERM_SOC_CODE AESEV AESER AEACN AEREL AEPATT AEOUT
+AESOT;
+RUN;
+
+DATA AE2;
+SET RAW.AE1 (KEEP = AESCON AESDIS AESDEATH AESHOS AESLIF  AECONTR);
+SUBJID = CATX("-",SUBSTR(SUBJECT,1,4),SUBSTR(SUBJECT,5,3));
+If AESCON = 1 then  AESCONG = "Y";
+Else AESCONG = "N" ; 
+If AESDIS = 1 then  AESDISAB = "Y";
+Else AESDISAB = "N";
+If AESDEATH = 1 then  AESDTH = "Y";
+Else AESDTH = "N" ;
+If AESHOS = 1 then  AESHOSP = "Y";
+Else AESHOSP = "N";
+If AESLIF = 1 then  AESLIFE = "Y";
+Else AESLIFE = "N";
+AESMIE =put(AESOT,3.);
+AECONTRT = AECONTR;
+
+DROP AESCON AESDIS AESDEATH AESHOS AESLIF  AECONTR  ;
+run;
+**********************************AESTDTC AEENDTC*********************************************************;
+ 
+data ae3;
+LENGTH AESTTIM $ 20 ;
+set raw.ae1 (keep= Project SUBJECT AESTDAT_C AESTTIM AEENDAT_C AEENTIM
+);
+STUDYID = Project;
+SUBJID = CATX("-",SUBSTR(SUBJECT,1,4),SUBSTR(SUBJECT,5,3));
+USUBJID = catx("-",STUDYID,SUBJID);
+IF NOT MISSING(AESTTIM) THEN DO;
+   IF LENGTH(SCAN(strip(AESTTIM),1,":"))=1 THEN AESTTIM=CAT("0",AESTTIM);
+   AESTDT=CATX("T",put(INPUT(COMPRESS(AESTDAT_C),date9.),e8601da.),AESTTIM); end;
+   else AESTDT=put(INPUT(COMPRESS(AESTDAT_C),date9.),e8601da.);
+   
+   IF NOT MISSING(AEENTIM) THEN DO;
+   IF LENGTH(SCAN(strip(AEENTIM),1,":"))=1 THEN AESTTIM=CAT("0",AEENTIM);
+   AEETDT=CATX("T",put(INPUT(COMPRESS(AEENDAT_C),date9.),e8601da.),AEENTIM); end;
+   else AEETDT=put(INPUT(COMPRESS(AEENDAT_C),date9.),e8601da.);
+RUN;
+
+PROC SORT DATA=ae3 (KEEP = USUBJID AESTDT AEETDT);
+BY USUBJID AESTDT;
+RUN;
+
+*************************************rfstd1****************************************************;
+data RFSTDT;
+MERGE RFXSTDTC_base RFXENDTC_base ae3 ;
+BY USUBJID;
+If INPUT(AESTDT,e8601da.) >= INPUT(RFSTDTC,e8601da.) then AESTDY = (INPUT(AESTDT,e8601da.) - INPUT(RFSTDTC,e8601da.))+1;
+ELSE AESTDY = INPUT(AESTDT,e8601da.) - INPUT(RFSTDTC,e8601da.);
+if not missing (AEETDT) then AEDUR= INPUT(AEETDT,e8601da.) - INPUT(AESTDT,e8601da.);
+RUN;
